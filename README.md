@@ -119,7 +119,6 @@ multiplex barcoding 데이터의 de-barcoding부터 batch correction, cell type 
 
 **Python Libraries**
 - Image processing: steinbock, scikit-image
-- Spatial analysis: Lisaclust, CATALYST
 - Deep learning: deepcell(mesmer)
 - Visualization: napari, matplotlib, seaborn
 
