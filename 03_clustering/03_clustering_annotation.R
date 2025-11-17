@@ -19,13 +19,11 @@
 # Date: 2025
 ################################################################################
 
-# Load required packages -------------------------------------------------------
-suppressPackageStartupMessages({
-    library(Seurat)
-    library(dplyr)
-    library(ggplot2)
-    library(tibble)
-})
+# Load required packages
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(tibble)
 
 # Create output directory
 if (!dir.exists("./results/03_clustering")) {
@@ -36,25 +34,19 @@ if (!dir.exists("./results/03_clustering")) {
 # 1. Load Integrated Data
 ################################################################################
 
-cat("\n=== Step 1: Loading Harmony-Integrated Data ===\n")
-
 load("./data/porcn.combined.harmony.RData")
-
-cat("✓ Data loaded successfully\n")
-cat("  Cells:    ", ncol(porcn.combined.harmony), "\n")
-cat("  Clusters: ", length(unique(Idents(porcn.combined.harmony))), "\n")
 
 ################################################################################
 # 2. Find Cluster Markers
 ################################################################################
 
-cat("\n=== Step 2: Finding Cluster Markers ===\n")
-cat("⚠ This may take several minutes...\n")
-
-# Join layers before FindAllMarkers
+# FindAllMarkers는 시간이 오래 걸릴 수 있음
+# JoinLayers를 먼저 실행해야 Seurat v5에서 작동
 porcn.combined.harmony <- JoinLayers(object = porcn.combined.harmony)
 
-# Find marker genes for all clusters
+# NOTE: only.pos = TRUE는 upregulated markers만 찾음
+# min.pct = 0.25는 최소 25% 세포에서 발현되어야 함
+# logfc.threshold = 0.25는 최소 0.25 log fold-change
 porcn.markers <- FindAllMarkers(
     porcn.combined.harmony,
     only.pos = TRUE,
@@ -70,22 +62,14 @@ write.csv(
     row.names = FALSE
 )
 
-cat("✓ Marker genes identified and saved\n")
-cat("  Total markers:", nrow(porcn.markers), "\n")
-
 # Display top markers per cluster
 top_markers <- porcn.markers %>%
     group_by(cluster) %>%
     slice_max(n = 5, order_by = avg_log2FC)
 
-cat("\nTop 5 markers per cluster (sample):\n")
-print(head(top_markers, 20))
-
 ################################################################################
 # 3. Visualize Canonical Cell Type Markers
 ################################################################################
-
-cat("\n=== Step 3: Canonical Marker Visualization ===\n")
 
 # Define canonical markers for major cell types
 canonical_markers <- list(
@@ -131,23 +115,18 @@ for (celltype in names(canonical_markers)) {
     )
 }
 
-cat("✓ Canonical marker feature plots saved\n")
-
 ################################################################################
 # 4. Cell Type Annotation
 ################################################################################
 
-cat("\n=== Step 4: Cell Type Annotation ===\n")
-
 # Store cluster assignments
 porcn.combined.harmony[["UMAP_Clusters"]] <- Idents(object = porcn.combined.harmony)
 
-# Define cell type annotations based on marker expression
-# Note: Cluster numbers may need to be adjusted based on your actual data
+# IMPORTANT: 실제 데이터의 cluster 번호에 맞춰 수정 필요
+# Marker gene expression을 확인 후 적절한 cell type 할당
 current.cluster.ids <- levels(Idents(porcn.combined.harmony))
 
 # Cell type annotation mapping
-# This is a template - adjust based on actual marker expression
 new.cluster.ids <- c(
     "0"  = "Epi/Cancer cell",
     "1"  = "Epi/Cancer cell",
@@ -184,24 +163,18 @@ annotations <- new.cluster.ids[existing_clusters]
 
 porcn.combined.harmony <- RenameIdents(
     object = porcn.combined.harmony,
-    !!!annotations  # Unquote-splice operator
+    !!!annotations
 )
 
 # Store annotations in metadata
 porcn.combined.harmony[["NH_labels"]] <- Idents(porcn.combined.harmony)
 
-cat("✓ Cell type annotations applied\n")
-cat("  Unique cell types:", length(unique(porcn.combined.harmony$NH_labels)), "\n")
-
 # Display cell type distribution
-cat("\nCell type distribution:\n")
-print(table(porcn.combined.harmony$NH_labels))
+table(porcn.combined.harmony$NH_labels)
 
 ################################################################################
 # 5. Define Cell Type Order and Colors
 ################################################################################
-
-cat("\n=== Step 5: Setting Display Order and Colors ===\n")
 
 # Define desired order for visualization
 desired_order <- c(
@@ -271,13 +244,9 @@ celltype.cols <- c(
     "NK cell"                   = "#8F7BB7"
 )
 
-cat("✓ Cell type order and colors defined\n")
-
 ################################################################################
 # 6. Generate Annotated UMAP
 ################################################################################
-
-cat("\n=== Step 6: Generating Annotated Visualizations ===\n")
 
 # Set identity to cell types
 Idents(porcn.combined.harmony) <- "NH_labels"
@@ -344,13 +313,9 @@ ggsave(
     dpi      = 300
 )
 
-cat("✓ Annotated UMAP plots saved\n")
-
 ################################################################################
 # 7. Generate DotPlot for Marker Genes
 ################################################################################
-
-cat("\n=== Step 7: Generating Marker Gene DotPlot ===\n")
 
 # Define marker genes for dotplot
 total_features <- unique(c(
@@ -408,52 +373,12 @@ ggsave(
     compression = "lzw"
 )
 
-cat("✓ Marker gene dotplot saved\n")
-
 ################################################################################
 # 8. Save Annotated Object
 ################################################################################
 
-cat("\n=== Step 8: Saving Annotated Object ===\n")
-
 save(porcn.combined.harmony, file = "./data/porcn.combined.harmony_annotated.RData")
-
-cat("✓ Annotated object saved\n")
-
-################################################################################
-# 9. Summary Report
-################################################################################
-
-cat("\n" %+% paste(rep("=", 80), collapse="") %+% "\n")
-cat("ANNOTATION SUMMARY REPORT\n")
-cat(paste(rep("=", 80), collapse="") %+% "\n\n")
-
-cat("Cell Type Distribution:\n")
-celltype_table <- table(porcn.combined.harmony$NH_labels)
-for (ct in names(celltype_table)) {
-    pct <- round(100 * celltype_table[ct] / ncol(porcn.combined.harmony), 2)
-    cat(sprintf("  %-35s: %6d cells (%5.2f%%)\n", ct, celltype_table[ct], pct))
-}
-
-cat("\nCondition-specific Distribution:\n")
-wt_cells <- sum(porcn.combined.harmony$ID == "WT")
-ko_cells <- sum(porcn.combined.harmony$ID == "KO")
-cat("  WT cells:", wt_cells, "\n")
-cat("  KO cells:", ko_cells, "\n")
-
-cat("\nOutput Files:\n")
-cat("  - ./data/porcn.combined.harmony_annotated.RData\n")
-cat("  - ./results/03_clustering/cluster_markers_all.csv\n")
-cat("  - ./results/03_clustering/UMAP_annotated.png\n")
-cat("  - ./results/03_clustering/UMAP_annotated_split.png\n")
-cat("  - ./results/03_clustering/DotPlot_markers.png\n")
-cat("  - ./results/03_clustering/DotPlot_markers.tiff\n")
-cat("  - ./results/03_clustering/FeaturePlot_*.png (multiple files)\n\n")
-
-cat(paste(rep("=", 80), collapse="") %+% "\n")
-cat("✓ Step 03 Complete: Clustering and Cell Type Annotation\n")
-cat(paste(rep("=", 80), collapse="") %+% "\n\n")
 
 gc()
 
-cat("Next step: 04_visualization/04_cell_proportion_analysis.R\n\n")
+# NOTE: 다음 단계는 04_visualization/04_cell_proportion_analysis.R
