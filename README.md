@@ -114,12 +114,12 @@ multiplex barcoding 데이터의 de-barcoding부터 batch correction, cell type 
 **R Packages**
 - Single-cell: Seurat (v5), CATALYST, SingleCellExperiment
 - Batch correction: harmony, batchelor
-- Statistics: diffcyt, edgeR, limma, DESeq2
+- Statistics: diffcyt (edgeR/limma backend), Seurat FindMarkers
 - Visualization: ggplot2, ComplexHeatmap, patchwork
 
 **Python Libraries**
 - Image processing: steinbock, scikit-image
-- Deep learning: deepcell(mesmer)
+- Deep learning: deepcell (mesmer)
 - Visualization: napari, matplotlib, seaborn
 
 **Workflow Management**
