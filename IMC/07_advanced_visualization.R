@@ -38,11 +38,11 @@ library(RColorBrewer)
 
 # Set parameters
 ADV_VIZ_PARAMS <- list(
-    volcano_label_threshold_d = 0.8,    # Label points with |d| > threshold
-    volcano_label_threshold_p = 0.01,   # or p < threshold
-    top_changes_n            = 15,      # Top N changes for panel D
-    heatmap_top_n            = 30,      # Top N for heatmap
-    key_pairs_per_category   = 2,       # Key pairs per category for Figure 3
+    volcano_label_threshold_d = 0.8,    # Volcano plot에서 라벨링할 effect size 임계값
+    volcano_label_threshold_p = 0.01,   # 또는 p-value 임계값
+    top_changes_n            = 15,      # Panel D에 표시할 top 변화 개수
+    heatmap_top_n            = 30,      # Heatmap에 표시할 top pair 개수
+    key_pairs_per_category   = 2,       # Figure 3에서 카테고리당 표시할 pair 개수
     seed                     = 900223
 )
 
@@ -58,19 +58,12 @@ if (!dir.exists("./figure/07_publication")) {
 raw_data <- read_csv("./figure/06_spatial_analysis/region_distances_raw.csv")
 stats_data <- read_csv("./figure/06_spatial_analysis/region_distances_statistics.csv")
 
-cat("Data Overview:\n")
-cat(sprintf("  Total measurements: %d\n", nrow(raw_data)))
-cat(sprintf("  Combinations tested: %d\n", nrow(stats_data)))
-cat(sprintf("  Samples: %d\n", length(unique(raw_data$sample_id))))
-cat(sprintf("  Regions: %d\n", length(unique(raw_data$region))))
-cat(sprintf("  Categories: %d\n\n", length(unique(raw_data$category))))
-
 ################################################################################
 # 2. Effect Size Analysis (Cohen's d)
 ################################################################################
 
-# IMPORTANT: Effect sizes are often more informative than p-values
-# Cohen's d interpretation: 0.2=small, 0.5=medium, 0.8=large
+# IMPORTANT: Effect size는 p-value보다 더 중요한 정보를 제공
+# Cohen's d 해석: 0.2=small, 0.5=medium, 0.8=large
 
 effect_size_data <- raw_data %>%
     group_by(region, from_celltype, to_celltype, category, group) %>%
@@ -86,19 +79,19 @@ effect_size_data <- raw_data %>%
         names_sep = "_"
     ) %>%
     mutate(
-        # Pooled standard deviation
+        # IMPORTANT: Pooled standard deviation 계산
         pooled_sd = sqrt(((n_Wt - 1) * sd_dist_Wt^2 + 
                           (n_Ko - 1) * sd_dist_Ko^2) / 
                          (n_Wt + n_Ko - 2)),
         
-        # Cohen's d
+        # Cohen's d: (mean1 - mean2) / pooled_sd
         cohens_d = (mean_dist_Ko - mean_dist_Wt) / pooled_sd,
         
         # Absolute and relative change
         abs_change = mean_dist_Ko - mean_dist_Wt,
         pct_change = 100 * abs_change / mean_dist_Wt,
         
-        # Effect size category
+        # Effect size category for interpretation
         effect_category = case_when(
             abs(cohens_d) < 0.2 ~ "Negligible",
             abs(cohens_d) < 0.5 ~ "Small",
@@ -106,38 +99,27 @@ effect_size_data <- raw_data %>%
             TRUE ~ "Large"
         ),
         
-        # Direction
+        # Direction of change
         direction = ifelse(abs_change > 0, "Increased in Ko", "Decreased in Ko")
     ) %>%
     left_join(stats_data, by = c("region", "from_celltype", "to_celltype", "category"))
 
-# Save effect size data
+# IMPORTANT: Effect size 데이터 저장 (모든 시각화의 기초)
 write_csv(
     effect_size_data,
     "./figure/07_publication/effect_size_analysis.csv"
 )
 
-cat("Effect Size Summary:\n")
-cat(sprintf("  Large effects (|d| > 0.8): %d\n", 
-            sum(abs(effect_size_data$cohens_d) > 0.8, na.rm = TRUE)))
-cat(sprintf("  Medium effects (0.5 < |d| ≤ 0.8): %d\n",
-            sum(abs(effect_size_data$cohens_d) > 0.5 & 
-                abs(effect_size_data$cohens_d) <= 0.8, na.rm = TRUE)))
-cat(sprintf("  Small effects (0.2 < |d| ≤ 0.5): %d\n\n",
-            sum(abs(effect_size_data$cohens_d) > 0.2 & 
-                abs(effect_size_data$cohens_d) <= 0.5, na.rm = TRUE)))
-
 ################################################################################
 # 3. FIGURE 1: Multi-Panel Comprehensive Overview
 ################################################################################
-
-cat("Creating Figure 1: Comprehensive overview...\n")
 
 ## Panel A: Category-wise Distance Comparison
 category_data <- raw_data %>%
     group_by(category, sample_id, group) %>%
     summarize(mean_dist = mean(mean_dist, na.rm = TRUE), .groups = "drop")
 
+# IMPORTANT: 카테고리별 통계 검정
 category_stats <- category_data %>%
     group_by(category) %>%
     wilcox_test(mean_dist ~ group) %>%
@@ -184,7 +166,7 @@ region_summary <- raw_data %>%
     group_by(region, category, group) %>%
     summarize(
         mean = mean(mean_dist, na.rm = TRUE),
-        se = sd(mean_dist, na.rm = TRUE) / sqrt(n()),
+        se = sd(mean_dist, na.rm = TRUE) / sqrt(n()),  # Standard error
         .groups = "drop"
     )
 
@@ -213,11 +195,13 @@ p_b <- ggplot(region_summary, aes(x = region, y = mean, fill = group)) +
     )
 
 ## Panel C: Volcano Plot (Effect Size vs P-value)
+# NOTE: Volcano plot은 effect size와 통계적 유의성을 동시에 보여줌
 volcano_data <- effect_size_data %>%
     mutate(
         neg_log10_p = -log10(p),
         significant = ifelse(p < 0.05, "Nominal (p<0.05)", "NS"),
         large_effect = ifelse(abs(cohens_d) > 0.5, "Large Effect", "Small Effect"),
+        # IMPORTANT: 라벨링 조건 (큰 effect size 또는 작은 p-value)
         label_text = ifelse(
             abs(cohens_d) > ADV_VIZ_PARAMS$volcano_label_threshold_d | 
             p < ADV_VIZ_PARAMS$volcano_label_threshold_p,
@@ -227,6 +211,7 @@ volcano_data <- effect_size_data %>%
     )
 
 p_c <- ggplot(volcano_data, aes(x = cohens_d, y = neg_log10_p)) +
+    # Shaded regions for significant and large effects
     annotate(
         "rect",
         xmin = -Inf, xmax = -0.5,
@@ -241,6 +226,7 @@ p_c <- ggplot(volcano_data, aes(x = cohens_d, y = neg_log10_p)) +
         fill = "#B2182B",
         alpha = 0.1
     ) +
+    # Threshold lines
     geom_hline(
         yintercept = -log10(0.05),
         linetype = "dashed",
@@ -332,7 +318,7 @@ p_d <- ggplot(plot_data_d, aes(x = pair_label, y = mean_dist, fill = group)) +
         title = "Top 15 Distance Changes (by Magnitude)"
     )
 
-## Combine panels
+## IMPORTANT: 4개 패널 조합
 layout <- "
 AABBBB
 AABBBB
@@ -352,6 +338,7 @@ fig1 <- p_a + p_b + p_c + p_d +
         )
     )
 
+# IMPORTANT: 고해상도 TIFF와 벡터 PDF 동시 저장
 ggsave(
     filename = "./figure/07_publication/FIGURE1_comprehensive.tiff",
     plot = fig1,
@@ -368,15 +355,11 @@ ggsave(
     height = 14
 )
 
-cat("  ✓ Saved: FIGURE1_comprehensive (TIFF & PDF)\n\n")
-
 ################################################################################
 # 4. FIGURE 2: Distance Change Heatmap
 ################################################################################
 
-cat("Creating Figure 2: Distance change heatmap...\n")
-
-# Select top N by effect size or p-value
+# IMPORTANT: Effect size 기준으로 top N 선택
 heatmap_data <- effect_size_data %>%
     filter(!is.na(abs_change) & !is.na(cohens_d)) %>%
     arrange(desc(abs(cohens_d))) %>%
@@ -386,14 +369,14 @@ heatmap_data <- effect_size_data %>%
         region_pair = paste(region, pair, sep = ": ")
     )
 
-# Create matrix
+# Matrix 생성: rows = regions, columns = cell pairs
 change_matrix <- heatmap_data %>%
     select(region, pair, abs_change) %>%
     pivot_wider(names_from = pair, values_from = abs_change) %>%
     column_to_rownames("region") %>%
     as.matrix()
 
-# Column annotation (category)
+# Column annotation: Category별 색상
 category_annot <- heatmap_data %>%
     select(pair, category) %>%
     distinct() %>%
@@ -413,11 +396,12 @@ col_ha <- HeatmapAnnotation(
     annotation_name_side = "left"
 )
 
-# Create heatmap
+# IMPORTANT: ComplexHeatmap 생성
 ht <- Heatmap(
     change_matrix,
     name = "Distance Change\n(Ko - Wt, μm)",
     
+    # Color scale: 파란색(감소) - 흰색(변화없음) - 빨간색(증가)
     col = colorRamp2(
         seq(
             -max(abs(change_matrix), na.rm = TRUE),
@@ -427,6 +411,7 @@ ht <- Heatmap(
         rev(brewer.pal(9, "RdBu"))
     ),
     
+    # Clustering: 유사한 패턴끼리 그룹화
     cluster_rows = TRUE,
     cluster_columns = TRUE,
     clustering_distance_rows = "euclidean",
@@ -473,15 +458,11 @@ pdf(
 draw(ht)
 dev.off()
 
-cat("  ✓ Saved: FIGURE2_heatmap (TIFF & PDF)\n\n")
-
 ################################################################################
 # 5. FIGURE 3: Detailed Comparison for Key Pairs
 ################################################################################
 
-cat("Creating Figure 3: Detailed comparison for key pairs...\n")
-
-# Select key pairs: largest effect sizes per category
+# IMPORTANT: 각 카테고리에서 가장 큰 effect size를 보이는 pair 선택
 key_pairs <- effect_size_data %>%
     group_by(category) %>%
     slice_max(abs(cohens_d), n = ADV_VIZ_PARAMS$key_pairs_per_category) %>%
@@ -556,14 +537,11 @@ ggsave(
     height = 10
 )
 
-cat("  ✓ Saved: FIGURE3_key_pairs (TIFF & PDF)\n\n")
-
 ################################################################################
 # 6. Supplementary Table: Complete Statistics
 ################################################################################
 
-cat("Creating supplementary table...\n")
-
+# IMPORTANT: 논문 supplementary material용 완전한 통계 테이블
 supp_table <- effect_size_data %>%
     select(
         Region = region,
@@ -589,68 +567,10 @@ write_csv(
     "./figure/07_publication/SUPPLEMENTARY_TABLE_complete_statistics.csv"
 )
 
-cat("  ✓ Saved: SUPPLEMENTARY_TABLE_complete_statistics.csv\n\n")
-
 ################################################################################
-# 7. Summary Report
+# 7. Clean Up
 ################################################################################
 
-cat("\n")
-cat("═══════════════════════════════════════════════════════════\n")
-cat("         PUBLICATION FIGURES COMPLETE                      \n")
-cat("═══════════════════════════════════════════════════════════\n\n")
-
-cat("Output Directory: ./figure/07_publication/\n\n")
-
-cat("Generated Files:\n")
-cat("───────────────────────────────────────────────────────────\n\n")
-
-cat("Main Figures:\n")
-cat("  • FIGURE1_comprehensive (TIFF/PDF)\n")
-cat("    ├─ Panel A: Category comparison with statistics\n")
-cat("    ├─ Panel B: Region-wise patterns\n")
-cat("    ├─ Panel C: Volcano plot (effect size vs p-value)\n")
-cat("    └─ Panel D: Top 15 distance changes\n\n")
-
-cat("  • FIGURE2_heatmap (TIFF/PDF)\n")
-cat("    └─ Top 30 distance changes by effect size\n\n")
-
-cat("  • FIGURE3_key_pairs (TIFF/PDF)\n")
-cat("    └─ Detailed analysis of key pairs\n\n")
-
-cat("Data Tables:\n")
-cat("  • effect_size_analysis.csv\n")
-cat("    └─ Complete effect size calculations\n\n")
-
-cat("  • SUPPLEMENTARY_TABLE_complete_statistics.csv\n")
-cat("    └─ All statistical results with effect sizes\n\n")
-
-cat("───────────────────────────────────────────────────────────\n\n")
-
-# Summary statistics
-cat("Key Findings:\n")
-cat("───────────────────────────────────────────────────────────\n\n")
-
-cat(sprintf("1. Total combinations analyzed: %d\n", nrow(effect_size_data)))
-
-sig_count <- sum(effect_size_data$p.adj < 0.05, na.rm = TRUE)
-if (sig_count > 0) {
-    cat(sprintf("2. Significant pairs (p.adj < 0.05): %d\n", sig_count))
-} else {
-    cat("2. No significant differences after multiple testing correction\n")
-    nominal_sig <- sum(effect_size_data$p < 0.05, na.rm = TRUE)
-    cat(sprintf("   However, %d showed nominal significance (p<0.05)\n", nominal_sig))
-}
-
-large_effects <- sum(abs(effect_size_data$cohens_d) > 0.8, na.rm = TRUE)
-cat(sprintf("\n3. Large effect sizes (|d| > 0.8): %d pairs\n", large_effects))
-
-cat("\n───────────────────────────────────────────────────────────\n\n")
-
-cat("Analysis complete!\n")
-cat("All publication-ready figures and tables have been generated.\n\n")
-
-# Clean up
 rm(effect_size_data, volcano_data, heatmap_data, ht)
 gc()
 
