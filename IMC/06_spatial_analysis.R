@@ -65,7 +65,7 @@ if (!"region" %in% colnames(colData(spe_region))) {
 # 2. Define Cell Type Categories
 ################################################################################
 
-# IMPORTANT: 본인의 cell type annotation에 맞게 수정 필요
+# IMPORTANT: cell type annotation에 맞게 수정 필요
 all_celltypes <- unique(spe_region$cluster_celltype)
 
 # Epithelial cells: "Epithelial" 문자열 포함
@@ -127,8 +127,7 @@ for (myeloid in myeloid_types) {
 # 4. Region-Based Distance Calculation
 ################################################################################
 
-# NOTE: 대용량 데이터의 경우 수 시간 소요 가능
-# 진행상황은 내부적으로 추적됨
+# 진행상황 추적할 수 있게 표시시
 
 regions <- sort(unique(na.omit(spe_region$region)))
 within_results <- list()
