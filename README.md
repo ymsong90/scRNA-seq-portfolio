@@ -1,4 +1,4 @@
-# Multi-Omics Analysis Portfolio
+# Singlecell-Omics Analysis Portfolio
 
 생물정보학 분석 파이프라인 코드 리뷰 자료입니다. 
 질병, 혈액 샘플의 면역 미세환경 분석을 위한 single-cell RNA-seq, imaging mass cytometry, mass cytometry 분석 코드를 포함합니다.
