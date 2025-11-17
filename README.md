@@ -7,7 +7,7 @@
 
 ## scRNA-seq Analysis Pipeline
 
-mouse PORCN knockout 모델의 위 조직 단일세포 전사체 분석 파이프라인 예시입니다. 
+mouse PORCN knockout 모델의 췌장암 조직 단일세포 전사체 분석 파이프라인 예시입니다. 
 Seurat v5 기반으로 구현했으며, 배치 효과 제거와 세포 타입별 differential gene expression 분석에 중점을 두었습니다.
 
 ### 핵심 구현 내용
