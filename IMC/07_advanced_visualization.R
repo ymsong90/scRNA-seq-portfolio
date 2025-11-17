@@ -475,4 +475,183 @@ dev.off()
 
 cat("  ✓ Saved: FIGURE2_heatmap (TIFF & PDF)\n\n")
 
-#################
+################################################################################
+# 5. FIGURE 3: Detailed Comparison for Key Pairs
+################################################################################
+
+cat("Creating Figure 3: Detailed comparison for key pairs...\n")
+
+# Select key pairs: largest effect sizes per category
+key_pairs <- effect_size_data %>%
+    group_by(category) %>%
+    slice_max(abs(cohens_d), n = ADV_VIZ_PARAMS$key_pairs_per_category) %>%
+    ungroup()
+
+plot_list_f3 <- list()
+
+for (i in 1:min(8, nrow(key_pairs))) {
+    data_sub <- raw_data %>%
+        filter(
+            region == key_pairs$region[i],
+            from_celltype == key_pairs$from_celltype[i],
+            to_celltype == key_pairs$to_celltype[i]
+        )
+    
+    if (nrow(data_sub) == 0) next
+    
+    p <- ggplot(data_sub, aes(x = group, y = mean_dist, fill = group)) +
+        geom_violin(alpha = 0.3, trim = FALSE) +
+        geom_boxplot(width = 0.3, alpha = 0.7, outlier.shape = NA) +
+        geom_jitter(width = 0.1, size = 2, alpha = 0.6) +
+        scale_fill_manual(values = c("Wt" = "#4DAF4A", "Ko" = "#E41A1C")) +
+        theme_classic(base_size = 10) +
+        labs(
+            title = sprintf(
+                "%s\n%s → %s",
+                key_pairs$region[i],
+                key_pairs$from_celltype[i],
+                key_pairs$to_celltype[i]
+            ),
+            subtitle = sprintf(
+                "Effect size: %.2f | p = %.3f",
+                key_pairs$cohens_d[i],
+                key_pairs$p[i]
+            ),
+            x = "",
+            y = "Distance (μm)"
+        ) +
+        stat_compare_means(
+            method = "wilcox.test",
+            label = "p.format",
+            size = 3.5
+        ) +
+        theme(
+            legend.position = "none",
+            plot.title = element_text(size = 9, face = "bold"),
+            plot.subtitle = element_text(size = 8, color = "grey30")
+        )
+    
+    plot_list_f3[[i]] <- p
+}
+
+fig3 <- wrap_plots(plot_list_f3, ncol = 4) +
+    plot_annotation(
+        title = "Detailed Analysis: Cell Pairs with Largest Effect Sizes",
+        theme = theme(plot.title = element_text(size = 14, face = "bold"))
+    )
+
+ggsave(
+    filename = "./figure/07_publication/FIGURE3_key_pairs.tiff",
+    plot = fig3,
+    width = 16,
+    height = 10,
+    dpi = 400,
+    compression = "lzw"
+)
+
+ggsave(
+    filename = "./figure/07_publication/FIGURE3_key_pairs.pdf",
+    plot = fig3,
+    width = 16,
+    height = 10
+)
+
+cat("  ✓ Saved: FIGURE3_key_pairs (TIFF & PDF)\n\n")
+
+################################################################################
+# 6. Supplementary Table: Complete Statistics
+################################################################################
+
+cat("Creating supplementary table...\n")
+
+supp_table <- effect_size_data %>%
+    select(
+        Region = region,
+        Category = category,
+        From = from_celltype,
+        To = to_celltype,
+        Wt_mean = mean_dist_Wt,
+        Ko_mean = mean_dist_Ko,
+        Absolute_change = abs_change,
+        Percent_change = pct_change,
+        Cohens_d = cohens_d,
+        Effect_category = effect_category,
+        p_value = p,
+        p_adjusted = p.adj,
+        n_Wt,
+        n_Ko
+    ) %>%
+    arrange(p_value) %>%
+    mutate(across(where(is.numeric), ~round(.x, 3)))
+
+write_csv(
+    supp_table,
+    "./figure/07_publication/SUPPLEMENTARY_TABLE_complete_statistics.csv"
+)
+
+cat("  ✓ Saved: SUPPLEMENTARY_TABLE_complete_statistics.csv\n\n")
+
+################################################################################
+# 7. Summary Report
+################################################################################
+
+cat("\n")
+cat("═══════════════════════════════════════════════════════════\n")
+cat("         PUBLICATION FIGURES COMPLETE                      \n")
+cat("═══════════════════════════════════════════════════════════\n\n")
+
+cat("Output Directory: ./figure/07_publication/\n\n")
+
+cat("Generated Files:\n")
+cat("───────────────────────────────────────────────────────────\n\n")
+
+cat("Main Figures:\n")
+cat("  • FIGURE1_comprehensive (TIFF/PDF)\n")
+cat("    ├─ Panel A: Category comparison with statistics\n")
+cat("    ├─ Panel B: Region-wise patterns\n")
+cat("    ├─ Panel C: Volcano plot (effect size vs p-value)\n")
+cat("    └─ Panel D: Top 15 distance changes\n\n")
+
+cat("  • FIGURE2_heatmap (TIFF/PDF)\n")
+cat("    └─ Top 30 distance changes by effect size\n\n")
+
+cat("  • FIGURE3_key_pairs (TIFF/PDF)\n")
+cat("    └─ Detailed analysis of key pairs\n\n")
+
+cat("Data Tables:\n")
+cat("  • effect_size_analysis.csv\n")
+cat("    └─ Complete effect size calculations\n\n")
+
+cat("  • SUPPLEMENTARY_TABLE_complete_statistics.csv\n")
+cat("    └─ All statistical results with effect sizes\n\n")
+
+cat("───────────────────────────────────────────────────────────\n\n")
+
+# Summary statistics
+cat("Key Findings:\n")
+cat("───────────────────────────────────────────────────────────\n\n")
+
+cat(sprintf("1. Total combinations analyzed: %d\n", nrow(effect_size_data)))
+
+sig_count <- sum(effect_size_data$p.adj < 0.05, na.rm = TRUE)
+if (sig_count > 0) {
+    cat(sprintf("2. Significant pairs (p.adj < 0.05): %d\n", sig_count))
+} else {
+    cat("2. No significant differences after multiple testing correction\n")
+    nominal_sig <- sum(effect_size_data$p < 0.05, na.rm = TRUE)
+    cat(sprintf("   However, %d showed nominal significance (p<0.05)\n", nominal_sig))
+}
+
+large_effects <- sum(abs(effect_size_data$cohens_d) > 0.8, na.rm = TRUE)
+cat(sprintf("\n3. Large effect sizes (|d| > 0.8): %d pairs\n", large_effects))
+
+cat("\n───────────────────────────────────────────────────────────\n\n")
+
+cat("Analysis complete!\n")
+cat("All publication-ready figures and tables have been generated.\n\n")
+
+# Clean up
+rm(effect_size_data, volcano_data, heatmap_data, ht)
+gc()
+
+# NOTE: Pipeline complete!
