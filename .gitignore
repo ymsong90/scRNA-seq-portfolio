@@ -1,0 +1,52 @@
+# R and RStudio files
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Data files (too large for GitHub)
+data/*.RData
+data/*.rds
+data/wt/
+data/ko/
+*.h5
+*.h5ad
+
+# Large result files
+results/**/*.RData
+results/**/*.rds
+
+# Temporary files
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# System files
+*~
+.Rproj.user
+
+# Large output files (keep only examples)
+results/**/*.tiff
+results/**/*.pdf
+results/**/*.png
+
+# Allow specific example files
+!results/examples/*.png
+!results/examples/*.tiff
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Large CSV files (optional - uncomment if too large)
+# results/**/*.csv
+
+# Compressed archives
+*.zip
+*.tar.gz
