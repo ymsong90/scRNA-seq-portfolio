@@ -20,16 +20,14 @@
 # Date: 2025
 ################################################################################
 
-# Load required packages -------------------------------------------------------
-suppressPackageStartupMessages({
-    library(Seurat)
-    library(dplyr)
-    library(ggplot2)
-    library(patchwork)
-    library(harmony)
-})
+# Load required packages
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(harmony)
 
-# Set parameters ---------------------------------------------------------------
+# Set parameters
 NORM_PARAMS <- list(
     normalization_method = "LogNormalize",
     scale_factor         = 10000,
@@ -46,36 +44,25 @@ if (!dir.exists("./results/02_integration")) {
 # 1. Load QC-Filtered Data
 ################################################################################
 
-cat("\n=== Step 1: Loading QC-Filtered Data ===\n")
-
 load("./data/porcn.combined_QC.RData")
-
-cat("✓ Data loaded successfully\n")
-cat("  Cells:", ncol(porcn.combined), "\n")
-cat("  Genes:", nrow(porcn.combined), "\n")
 
 ################################################################################
 # 2. Normalization
 ################################################################################
 
-cat("\n=== Step 2: Data Normalization ===\n")
-
+# NOTE: LogNormalize는 각 cell의 총 카운트를 10,000으로 정규화 후 log transformation
 porcn.combined <- NormalizeData(
     object               = porcn.combined,
     normalization.method = NORM_PARAMS$normalization_method,
     scale.factor         = NORM_PARAMS$scale_factor
 )
 
-cat("✓ Normalization complete\n")
-cat("  Method:       ", NORM_PARAMS$normalization_method, "\n")
-cat("  Scale factor: ", NORM_PARAMS$scale_factor, "\n")
-
 ################################################################################
 # 3. Identify Highly Variable Features
 ################################################################################
 
-cat("\n=== Step 3: Identifying Variable Features ===\n")
-
+# NOTE: vst method는 variance-to-mean ratio를 이용한 방법
+# 생물학적 변이가 큰 유전자를 선별
 porcn.combined <- FindVariableFeatures(
     porcn.combined,
     selection.method = "vst",
@@ -84,9 +71,6 @@ porcn.combined <- FindVariableFeatures(
 
 # Get top variable genes
 top_genes <- head(VariableFeatures(porcn.combined), 20)
-cat("✓ Variable features identified:", length(VariableFeatures(porcn.combined)), "\n")
-cat("\n  Top 20 variable genes:\n")
-print(top_genes)
 
 # Plot variable features
 plot_var_features <- VariableFeaturePlot(porcn.combined)
@@ -106,33 +90,26 @@ ggsave(
     dpi      = 300
 )
 
-cat("✓ Variable feature plot saved\n")
-
 ################################################################################
 # 4. Scale Data
 ################################################################################
 
-cat("\n=== Step 4: Scaling Data ===\n")
-cat("⚠ This step may take several minutes...\n")
-
-# Scale all genes for downstream analyses
+# IMPORTANT: 모든 유전자를 scaling (평균 0, 분산 1로 표준화)
+# Downstream analysis (PCA, clustering 등)를 위해 필수
 porcn.combined <- ScaleData(
     object   = porcn.combined,
     features = rownames(porcn.combined)
 )
 
-cat("✓ Data scaling complete\n")
-
-# Save intermediate object
+# Save intermediate object (checkpoint)
 save(porcn.combined, file = "./data/porcn.combined_scaled.RData")
-cat("✓ Scaled object saved (checkpoint)\n")
 
 ################################################################################
 # 5. PCA (Before Harmony)
 ################################################################################
 
-cat("\n=== Step 5: Principal Component Analysis ===\n")
-
+# NOTE: PCA는 dimensionality reduction의 첫 단계
+# Variable features만 사용하여 계산
 porcn.combined <- RunPCA(
     porcn.combined,
     features = VariableFeatures(object = porcn.combined),
@@ -157,9 +134,6 @@ ggsave(
     dpi      = 300
 )
 
-cat("✓ PCA complete (50 PCs computed)\n")
-cat("  Selected PCs for downstream:", NORM_PARAMS$n_pcs, "\n")
-
 # PCA visualization before harmony
 pca_before <- DimPlot(
     porcn.combined,
@@ -173,8 +147,8 @@ pca_before <- DimPlot(
 # 6. Clustering and UMAP (Without Harmony) - For Comparison
 ################################################################################
 
-cat("\n=== Step 6: Clustering Without Harmony (Baseline) ===\n")
-
+# NOTE: Harmony 적용 전 baseline 결과 확인용
+# Batch effect가 있는지 확인하기 위한 비교군
 porcn.combined <- FindNeighbors(
     object = porcn.combined,
     dims   = 1:NORM_PARAMS$n_pcs
@@ -210,22 +184,18 @@ umap_no_harmony_split <- DimPlot(
 ) +
     ggtitle("UMAP Without Harmony (Split by Condition)")
 
-cat("✓ Baseline clustering complete (for comparison)\n")
-
 ################################################################################
 # 7. Harmony Batch Correction
 ################################################################################
 
-cat("\n=== Step 7: Harmony Batch Correction ===\n")
-cat("⚠ Running Harmony integration...\n")
-
+# IMPORTANT: Harmony는 iterative clustering 기반 batch correction
+# "ID" 변수 (WT vs KO)에 대한 batch effect를 보정
+# plot_convergence = TRUE로 수렴 과정 확인 가능
 porcn.combined.harmony <- porcn.combined %>% 
     RunHarmony(
-        "ID",                    # Batch variable to correct
-        plot_convergence = TRUE  # Show convergence plot
+        "ID",
+        plot_convergence = TRUE
     )
-
-cat("✓ Harmony integration complete\n")
 
 # Save Harmony convergence plot
 harmony_plot <- porcn.combined.harmony@tools$RunHarmony$plot
@@ -241,23 +211,20 @@ ggsave(
 # 8. Clustering and UMAP (With Harmony)
 ################################################################################
 
-cat("\n=== Step 8: Clustering With Harmony ===\n")
-
-# Find neighbors using Harmony reduction
+# NOTE: Harmony-corrected embedding을 사용
+# reduction = "harmony"로 지정
 porcn.combined.harmony <- FindNeighbors(
     object    = porcn.combined.harmony,
     dims      = 1:NORM_PARAMS$n_pcs,
     reduction = "harmony"
 )
 
-# Find clusters
+# 2.5는 상대적으로 높은 값 (fine-grained clustering)
 porcn.combined.harmony <- FindClusters(
     object     = porcn.combined.harmony,
     resolution = 2.5,
     reduction  = "harmony"
 )
-
-cat("✓ Identified", length(unique(Idents(porcn.combined.harmony))), "clusters\n")
 
 # Run UMAP on Harmony embeddings
 porcn.combined.harmony <- RunUMAP(
@@ -273,13 +240,9 @@ porcn.combined.harmony <- RunTSNE(
     reduction = "harmony"
 )
 
-cat("✓ Dimensionality reduction complete (UMAP & t-SNE)\n")
-
 ################################################################################
 # 9. Visualization Comparisons
 ################################################################################
-
-cat("\n=== Step 9: Generating Comparison Plots ===\n")
 
 # UMAP with Harmony - by cluster
 umap_harmony_clusters <- DimPlot(
@@ -347,15 +310,10 @@ ggsave(
     dpi      = 300
 )
 
-cat("✓ Comparison plots saved\n")
-
 ################################################################################
 # 10. QC Metrics Visualization
 ################################################################################
 
-cat("\n=== Step 10: Post-Integration QC ===\n")
-
-# Violin plots for QC metrics after integration
 Idents(object = porcn.combined.harmony) <- 'ID'
 
 vln_qc <- VlnPlot(
@@ -373,56 +331,14 @@ ggsave(
     dpi      = 300
 )
 
-cat("✓ Post-integration QC plots saved\n")
-
 ################################################################################
 # 11. Save Integrated Object
 ################################################################################
 
-cat("\n=== Step 11: Saving Integrated Object ===\n")
-
 save(porcn.combined.harmony, file = "./data/porcn.combined.harmony.RData")
-
-cat("✓ Harmony-corrected object saved to ./data/porcn.combined.harmony.RData\n")
-
-################################################################################
-# 12. Summary Report
-################################################################################
-
-cat("\n" %+% paste(rep("=", 80), collapse="") %+% "\n")
-cat("INTEGRATION SUMMARY REPORT\n")
-cat(paste(rep("=", 80), collapse="") %+% "\n\n")
-
-cat("Normalization:\n")
-cat("  Method:             ", NORM_PARAMS$normalization_method, "\n")
-cat("  Scale factor:       ", NORM_PARAMS$scale_factor, "\n")
-cat("  Variable features:  ", NORM_PARAMS$n_variable_features, "\n\n")
-
-cat("Dimensionality Reduction:\n")
-cat("  PCs used:           ", NORM_PARAMS$n_pcs, "\n")
-cat("  Clustering resolution: 2.5\n")
-cat("  Clusters identified:", length(unique(Idents(porcn.combined.harmony))), "\n\n")
-
-cat("Batch Correction:\n")
-cat("  Method:             Harmony\n")
-cat("  Batch variable:     ID (WT vs KO)\n")
-cat("  Converged:          Yes\n\n")
-
-cat("Output Files:\n")
-cat("  - ./data/porcn.combined.harmony.RData\n")
-cat("  - ./results/02_integration/variable_features.png\n")
-cat("  - ./results/02_integration/PCA_elbow_plot.png\n")
-cat("  - ./results/02_integration/harmony_convergence.png\n")
-cat("  - ./results/02_integration/UMAP_harmony_clusters.png\n")
-cat("  - ./results/02_integration/UMAP_harmony_split.png\n")
-cat("  - ./results/02_integration/integration_comparison.png\n\n")
-
-cat(paste(rep("=", 80), collapse="") %+% "\n")
-cat("✓ Step 02 Complete: Normalization and Harmony Integration\n")
-cat(paste(rep("=", 80), collapse="") %+% "\n\n")
 
 # Clean up
 rm(porcn.combined)
 gc()
 
-cat("Next step: 03_clustering/03_clustering_annotation.R\n\n")
+# NOTE: 다음 단계는 03_clustering/03_clustering_annotation.R
