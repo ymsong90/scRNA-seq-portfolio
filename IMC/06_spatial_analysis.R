@@ -382,7 +382,6 @@ if (exists("stats_results") && nrow(stats_results) > 0) {
 ################################################################################
 
 rm(spe_region, within_results)
-if (exists("temp_spe")) rm(temp_spe)
 gc()
 
 # NOTE: Next step is 07_advanced_visualization.R
