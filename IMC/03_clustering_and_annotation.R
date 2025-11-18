@@ -488,4 +488,3 @@ saveRDS(spe, "./data/spe_annotated.rds")
 rm(celltype_mean, mat, mat_z, expr_long, ht)
 gc()
 
-# NOTE: Next step is 04_quality_control.R
