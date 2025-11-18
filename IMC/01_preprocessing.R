@@ -431,5 +431,3 @@ saveRDS(masks, "./data/masks.rds")
 # Clean up
 rm(image_mean, images_subset, masks_subset)
 gc()
-
-# NOTE: Next step is 02_batch_correction.R
